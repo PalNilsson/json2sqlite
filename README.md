@@ -1,12 +1,12 @@
 # json2sqlite
 
-A simple tool that creates and populates an SQLite database from a JSON file with format:
+A simple tool that creates and populates an SQLite database from a JSON file with assumed format:
 
 `{ outer_key: { col: value, ... }, ... }`
 
-**Examples**
+**Usage**
 
-`usage: python3 json_to_sqlite.py [-h] --db DB --table TABLE [--queuedata QUEUEDATA] [--annotations ANNOTATIONS]`
+`python3 json_to_sqlite.py [-h] --db DB --table TABLE [--queuedata QUEUEDATA] [--annotations ANNOTATIONS]`
 
 where
 
