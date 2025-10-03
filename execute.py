@@ -11,8 +11,10 @@ def run_sql_to_dicts(
     *,
     json_columns: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Execute an SQL statement on a SQLite DB and return rows as dictionaries.
-    JSON-looking strings are parsed into native Python objects."""
+    """
+    Execute an SQL statement on a SQLite DB and return rows as dictionaries.
+    JSON-looking strings are parsed into native Python objects by default.
+    """
 
     def _maybe_json_parse(val: Any, col: str) -> Any:
         if not isinstance(val, str):
@@ -21,10 +23,12 @@ def run_sql_to_dicts(
         if not s:
             return val
 
+        # If user specified explicit JSON columns, only parse those
         if json_columns is not None and col not in json_columns:
             return val
 
-        if s[0] in "{[" or s in ("true", "false", "null"):
+        # Try to parse JSON if it looks like JSON
+        if s[0] in "{[" or s in ("true", "false", "null") or s.replace('.', '', 1).isdigit():
             try:
                 return json.loads(s)
             except Exception:
@@ -42,7 +46,8 @@ def run_sql_to_dicts(
         for r in rows:
             as_dict: Dict[str, Any] = {}
             for col in r.keys():
-                as_dict[col] = _maybe_json_parse(r[col], col)
+                parsed = _maybe_json_parse(r[col], col)
+                as_dict[col] = parsed
             result.append(as_dict)
         return result
     finally:
@@ -58,7 +63,7 @@ def main():
     parser.add_argument(
         "--json-cols",
         nargs="*",
-        help="Optional list of column names to parse as JSON (otherwise auto-detect).",
+        help="Optional list of column names to parse as JSON (defaults to auto-detect).",
     )
     parser.add_argument(
         "--limit", type=int, default=None,

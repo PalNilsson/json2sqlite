@@ -33,9 +33,9 @@ Which queue is the first queue that has a timefloor larger than zero?
 
 You can also use the provided `execute.py` script to run arbitrary SQL queries on the database, e.g.,
 
-`python3 execute.py --db queuedata.db --sql "SELECT * FROM queuedata WHERE timefloor>0 LIMIT 1;"`
+`python3 execute.py --db queuedata.db --sql "SELECT * FROM queuedata WHERE timefloor>0 LIMIT 1;" --pretty`
 
-(this will return a proper python dictionary).
+(this will return a proper python dictionary, pretty printed).
 
 TODO: Create the annotations table from annotated_queuedata.json.
 
