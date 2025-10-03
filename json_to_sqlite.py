@@ -1,7 +1,12 @@
+import argparse
 import sqlite3
 import json
-import re
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Tuple, Optional
+from pathlib import Path
+
+# --------- Schema & typing ---------
+SQLITE_TYPE_ORDER = ["INTEGER", "REAL", "TEXT"]  # escalation order
+
 
 # --------- Public API ---------
 def dicts_to_sqlite(
@@ -40,9 +45,8 @@ def dicts_to_sqlite(
     finally:
         conn.close()
 
-# --------- Schema & typing ---------
-SQLITE_TYPE_ORDER = ["INTEGER", "REAL", "TEXT"]  # escalation order
 
+# Infer SQLite type from a Python value
 def infer_sqlite_type(value: Any) -> str:
     """Infer a safe SQLite type for a Python value (with JSON fallback)."""
     if value is None:
@@ -60,6 +64,7 @@ def infer_sqlite_type(value: Any) -> str:
     # Lists, dicts, tuples, sets, custom objects → JSON TEXT
     return "TEXT"
 
+# Merge two SQLite affinities, escalating as needed
 def merge_affinity(a: str, b: str) -> str:
     """Return a type that can hold both a and b, escalating as needed."""
     if a == b:
@@ -73,6 +78,7 @@ def merge_affinity(a: str, b: str) -> str:
     # Otherwise INTEGER
     return "INTEGER"
 
+#--------- Schema analysis ---------
 def analyze_schema(rows: Iterable[Dict[str, Any]]) -> Tuple[Dict[str, str], Dict[str, Any]]:
     """
     Walk all rows and infer a column type per column (union over rows).
@@ -116,6 +122,7 @@ def create_main_table(conn: sqlite3.Connection, table: str, col_types: Dict[str,
     """
     conn.execute(ddl)
 
+# --------- Column map ---------
 def create_or_update_column_map(conn: sqlite3.Connection, table: str, cols: Iterable[str]) -> None:
     """
     Stores a mapping of original column names to themselves (and reserved for future renames).
@@ -132,6 +139,7 @@ def create_or_update_column_map(conn: sqlite3.Connection, table: str, cols: Iter
             (c, c),
         )
 
+# --------- Column documentation ---------
 def create_or_update_column_docs(conn: sqlite3.Connection, table: str) -> None:
     """
     Table for per-column documentation that your LLM can read when generating SQL.
@@ -143,6 +151,7 @@ def create_or_update_column_docs(conn: sqlite3.Connection, table: str) -> None:
     );
     """)
 
+# --------- Upsert column docs ---------
 def upsert_column_docs(conn: sqlite3.Connection, table: str, docs: Dict[str, str]) -> None:
     for col, desc in docs.items():
         conn.execute(
@@ -150,6 +159,7 @@ def upsert_column_docs(conn: sqlite3.Connection, table: str, docs: Dict[str, str
             f'ON CONFLICT(column_name) DO UPDATE SET description=excluded.description;',
             (col, desc),
         )
+
 
 # --------- DML ---------
 def to_db_scalar(value: Any) -> Any:
@@ -163,6 +173,8 @@ def to_db_scalar(value: Any) -> Any:
     # Fallback: JSON-serialize
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
+
+# --------- Upsert rows ---------
 def upsert_rows(
     conn: sqlite3.Connection,
     table: str,
@@ -192,6 +204,7 @@ def upsert_rows(
         raw = json.dumps(row, separators=(",", ":"), ensure_ascii=False)
         conn.execute(sql, [record_id, *values, raw])
 
+
 # --------- Optional helpers for LLM prompting ---------
 def get_column_docs_bundle(conn: sqlite3.Connection, table: str) -> str:
     """
@@ -201,25 +214,80 @@ def get_column_docs_bundle(conn: sqlite3.Connection, table: str) -> str:
     pairs = [f"{name}: {desc}".strip() for name, desc in cur.fetchall()]
     return f"Table {table} columns:\n" + "\n".join(pairs)
 
+
+# --------- JSON file helper ---------
+def _read_json(path: str | Path) -> Any:
+    p = Path(path)
+    with p.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+# --------- Annotations normalization helper ---------
+def _normalize_annotations(d: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """
+    Ensure all values are strings; coerce None / missing / falsy to "".
+    Keys are stringified to be safe.
+    """
+    if not d:
+        return {}
+    out: Dict[str, str] = {}
+    for k, v in d.items():
+        if v is None or v is False:
+            out[str(k)] = ""
+        else:
+            s = str(v)
+            out[str(k)] = s if s is not None else ""
+    return out
+
+
+# --------- High-level function to load from files ---------
+def dicts_to_sqlite_from_files(
+    db_path: str,
+    table_name: str,
+    queuedata_path: str = "queuedata.json",
+    annotations_path: Optional[str] = "annotated_queuedata.json",
+) -> None:
+    """
+    Load dictionary1 from `queuedata.json` and dictionary2 from `annotated_queuedata.json`,
+    normalize annotations (empty → ""), and write into SQLite via dicts_to_sqlite().
+    """
+    dictionary1 = _read_json(queuedata_path)
+    if not isinstance(dictionary1, dict):
+        raise ValueError(
+            f"{queuedata_path} must be a JSON object of the form "
+            "{ outer_key: { col: value, ... }, ... }"
+        )
+
+    dictionary2 = _read_json(annotations_path) if annotations_path and Path(annotations_path).exists() else {}
+    if dictionary2 and not isinstance(dictionary2, dict):
+        raise ValueError(
+            f"{annotations_path} must be a JSON object of the form "
+            "{ col: 'description', ... }"
+        )
+
+    dictionary2 = _normalize_annotations(dictionary2)
+
+    # Optional: warn if some columns in dictionary1 have no annotation present
+    # (not required, but often useful)
+    # known_cols = set().union(*[set(v.keys()) for v in dictionary1.values()])
+    # missing = sorted([c for c in known_cols if c not in dictionary2])
+    # if missing:
+    #     print(f"[info] {len(missing)} columns without annotations (stored as empty strings): {missing[:10]}{'...' if len(missing) > 10 else ''}")
+
+    # Call your earlier function
+    dicts_to_sqlite(db_path, table_name, dictionary1, dictionary2)
+
+
 # --------- Example usage ---------
 if __name__ == "__main__":
-    # Example input
-    dictionary1 = {
-        "rowA": {"pandaid": 6810532013, "taskid": 46082195, "processingtype": "evgen", "metrics": {"memMB": 2048, "cpu": 1.9}},
-        "rowB": {"pandaid": 6810532014, "taskid": 46082195, "processingtype": "simul", "ok": True, "runtime_sec": 12.5},
-        "rowC": {"pandaid": 6810532015, "taskid": 46082196, "notes": ["retry", "site=BNL"], "runtime_sec": None},
-    }
 
-    dictionary2 = {
-        "pandaid": "Unique PanDA job identifier (integer).",
-        "taskid": "PanDA task identifier to which the job belongs.",
-        "processingtype": "Processing category, e.g., evgen, simul.",
-        "metrics": "JSON blob with various numeric metrics (e.g., memMB, cpu).",
-        "ok": "Boolean (stored as INTEGER 0/1) indicating success.",
-        "runtime_sec": "Wall-clock run time in seconds; may be NULL if not completed.",
-        "notes": "List of free-form strings, stored as JSON.",
-    }
+    parser = argparse.ArgumentParser(description="Load queuedata + annotations into SQLite.")
+    parser.add_argument("--db", required=True, help="Path to SQLite DB file (will be created if missing).")
+    parser.add_argument("--table", required=True, help="Target table name, e.g., 'queuedata'.")
+    parser.add_argument("--queuedata", default="queuedata.json", help="Path to queuedata.json (dictionary1).")
+    parser.add_argument("--annotations", default="annotated_queuedata.json",
+                        help="Path to annotated_queuedata.json (dictionary2). If absent, no docs are stored.")
+    args = parser.parse_args()
 
-    dicts_to_sqlite("example.db", "jobs", dictionary1, dictionary2)
-    # Afterwards, your DB has tables:
-    #   jobs, jobs__column_map, jobs__column_docs
+    dicts_to_sqlite_from_files(args.db, args.table, args.queuedata, args.annotations)
+    print(f"Loaded '{args.queuedata}' (+ annotations) into {args.db}:{args.table}")
