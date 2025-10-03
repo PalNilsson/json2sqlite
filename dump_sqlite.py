@@ -54,6 +54,6 @@ def dump_sqlite(db_path: str, table: Optional[str] = None, limit: Optional[int] 
 
 
 if __name__ == "__main__":
-    dump_sqlite("example.db")                # dump everything
+    dump_sqlite("queuedata.db", limit=1)                # dump everything
 #    dump_sqlite("example.db", "jobs")        # dump only the "jobs" table
 #    dump_sqlite("example.db", limit=5)       # dump first 5 rows of each table
