@@ -36,6 +36,8 @@ You can also use the provided `execute.py` script to run arbitrary SQL queries o
 
 (this will return a proper python dictionary).
 
+TODO: Create the annotations table from annotated_queuedata.json.
+
 
 
 
