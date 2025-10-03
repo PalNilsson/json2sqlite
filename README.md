@@ -15,7 +15,8 @@ where
 * --queuedata: Path to queuedata.json (dictionary1).
 * --annotations: Path to annotated_queuedata.json (dictionary2). If absent, no docs are stored.
 
-**Notes**
+**Examples with queuedata from CRIC**
+
 The created database can easily be inspected using the `sqlite3` command line tool, e.g.,
 
 Which queues are not using rucio for data transfers:
