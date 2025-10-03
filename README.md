@@ -35,7 +35,7 @@ You can also use the provided `execute.py` script to run arbitrary SQL queries o
 
 `python3 execute.py --db queuedata.db --sql "SELECT * FROM queuedata WHERE timefloor>0 LIMIT 1;" --pretty`
 
-(this will return a proper python dictionary, pretty printed).
+(this will return a list of proper python dictionaries, pretty printed).
 
 TODO: Create the annotations table from annotated_queuedata.json.
 
