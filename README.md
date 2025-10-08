@@ -41,8 +41,6 @@ Select the acopytools field from queue AGLT2:
 
 `python3 execute.py --db queuedata.db --sql "SELECT acopytools FROM queuedata WHERE record_id = 'AGLT2';" --pretty`
 
-TODO: Create the annotations table from annotated_queuedata.json.
-
 
 
 
